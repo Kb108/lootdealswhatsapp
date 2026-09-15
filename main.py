@@ -4,22 +4,25 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-WAHA_URL = os.getenv("WAHA_URL")
-WAHA_API_KEY = os.getenv("WAHA_API_KEY")
+WAHA_URL = os.getenv("WAHA_URL", "")
+WAHA_API_KEY = os.getenv("WAHA_API_KEY", "")
 WAHA_SESSION = os.getenv("WAHA_SESSION", "default")
-WHATSAPP_CHANNEL_ID = os.getenv("WHATSAPP_CHANNEL_ID")
-
-TELEGRAM_SECRET = os.getenv("TELEGRAM_SECRET", "")
+WHATSAPP_CHANNEL_ID = os.getenv("WHATSAPP_CHANNEL_ID", "")
 
 
 def send_to_whatsapp(text):
+    if not WAHA_URL or not WHATSAPP_CHANNEL_ID:
+        print("WhatsApp settings are not configured yet.")
+        return False
+
     url = f"{WAHA_URL.rstrip('/')}/api/sendText"
 
     headers = {
-        "Content-Type": "application/json",
-        "X-Api-Key": WAHA_API_KEY
+        "Content-Type": "application/json"
     }
+
+    if WAHA_API_KEY:
+        headers["X-Api-Key"] = WAHA_API_KEY
 
     data = {
         "session": WAHA_SESSION,
@@ -35,7 +38,7 @@ def send_to_whatsapp(text):
         timeout=30
     )
 
-    print("WAHA:", response.status_code, response.text)
+    print("WhatsApp response:", response.status_code, response.text)
 
     return response.ok
 
@@ -48,43 +51,30 @@ def home():
 @app.route("/telegram", methods=["POST"])
 def telegram_webhook():
 
-    if TELEGRAM_SECRET:
-        received_secret = request.headers.get(
-            "X-Telegram-Bot-Api-Secret-Token"
-        )
-
-        if received_secret != TELEGRAM_SECRET:
-            return jsonify({"ok": False}), 403
-
     update = request.get_json(silent=True) or {}
+
+    print("Telegram update received:")
+    print(update)
 
     post = update.get("channel_post")
 
     if not post:
         return jsonify({"ok": True})
 
-    chat = post.get("chat", {})
-    username = chat.get("username", "")
-
-    # শুধুমাত্র Loot Deals channel থেকে পোস্ট গ্রহণ
-    if username.lower() != "loot_dells":
-        return jsonify({"ok": True})
-
-    text = post.get("text") or post.get("caption") or ""
+    text = post.get("text") or post.get("caption")
 
     if not text:
         return jsonify({"ok": True})
 
-    success = send_to_whatsapp(text)
+    print("Loot Deals post:")
+    print(text)
 
-    return jsonify({
-        "ok": success
-    })
+    # WhatsApp এখনো সেটআপ না হলেও Telegram message receive test হবে
+    send_to_whatsapp(text)
+
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8080"))
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
+    app.run(host="0.0.0.0", port=port)
